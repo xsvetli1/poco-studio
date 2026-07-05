@@ -15,4 +15,4 @@ Open `index.html`. Load order: React → ReactDOM → Babel → `_ds_bundle.js` 
 
 ## Notes
 - Imagery is intentionally **shape-based** (brand lens/circle on colour fields) — swap in real photography when available.
-- All copy is Czech and in the brand voice (lowercase, warm, "we"→"you").
+- All copy is Czech and in the brand voice (lowercase, warm, "we" → "you").
