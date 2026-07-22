@@ -134,6 +134,127 @@ document.addEventListener('DOMContentLoaded', async function() {
     // The manifest bytes are ours; SRI protects against CDN compromise, not this.
     template = template.replace(/\s+integrity="[^"]*"/gi, '').replace(/\s+crossorigin="[^"]*"/gi, '');
 
+    function installMobileNavigation() {
+      const setup = () => {
+        const header = document.querySelector('header');
+        const inner = header && header.firstElementChild;
+        const desktopNav = inner && inner.querySelector('.poco-nav');
+        if (!header || !inner || !desktopNav || header.dataset.mobileNavReady) return false;
+
+        header.dataset.mobileNavReady = 'true';
+        inner.classList.add('poco-header-inner');
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'poco-menu-toggle';
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-controls', 'poco-mobile-menu');
+        toggle.setAttribute('aria-label', 'Otevřít menu');
+        toggle.innerHTML = '<span></span><span></span><span></span>';
+
+        const menu = document.createElement('nav');
+        menu.id = 'poco-mobile-menu';
+        menu.className = 'poco-mobile-menu';
+        menu.setAttribute('aria-label', 'Hlavní navigace');
+
+        desktopNav.querySelectorAll('a').forEach((sourceLink) => {
+          const link = document.createElement('a');
+          link.href = sourceLink.getAttribute('href');
+          link.textContent = sourceLink.textContent;
+          menu.appendChild(link);
+        });
+
+        const contact = document.createElement('a');
+        contact.href = '#kontakt';
+        contact.className = 'poco-mobile-contact';
+        contact.textContent = 'pojďme to probrat →';
+        menu.appendChild(contact);
+
+        const setOpen = (open) => {
+          menu.dataset.open = String(open);
+          toggle.dataset.open = String(open);
+          toggle.setAttribute('aria-expanded', String(open));
+          toggle.setAttribute('aria-label', open ? 'Zavřít menu' : 'Otevřít menu');
+        };
+
+        toggle.addEventListener('click', () => setOpen(toggle.getAttribute('aria-expanded') !== 'true'));
+        menu.addEventListener('click', (event) => {
+          if (event.target.closest('a')) setOpen(false);
+        });
+        document.addEventListener('click', (event) => {
+          if (!header.contains(event.target)) setOpen(false);
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape' && toggle.getAttribute('aria-expanded') === 'true') {
+            setOpen(false);
+            toggle.focus();
+          }
+        });
+        window.addEventListener('resize', () => {
+          if (window.innerWidth > 720) setOpen(false);
+        }, { passive: true });
+
+        inner.appendChild(toggle);
+        header.appendChild(menu);
+        return true;
+      };
+
+      if (!setup()) {
+        const observer = new MutationObserver(() => {
+          if (setup()) observer.disconnect();
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        setTimeout(() => observer.disconnect(), 5000);
+      }
+    }
+
+    const mobileNavStyles = `<style>
+      .poco-menu-toggle, .poco-mobile-menu { display: none; }
+      @media (max-width: 720px) {
+        header { width: 100%; max-width: 100%; }
+        .poco-header-inner {
+          width: 100%; max-width: var(--container); min-width: 0;
+          padding: 12px 16px !important; gap: 12px !important;
+        }
+        .poco-header-inner > a:first-child { flex: 0 0 auto; min-width: 0; }
+        .poco-header-inner > .poco-nav + button { display: none !important; }
+        .poco-menu-toggle {
+          appearance: none; display: inline-flex; flex: 0 0 44px;
+          width: 44px; height: 44px; margin-left: auto; padding: 0;
+          align-items: center; justify-content: center; flex-direction: column; gap: 5px;
+          border: 0; border-radius: 0;
+          background: transparent; color: var(--poco-ink);
+        }
+        .poco-menu-toggle span {
+          display: block; width: 18px; height: 2px; border-radius: 2px;
+          background: currentColor; transition: transform .2s ease, opacity .2s ease;
+        }
+        .poco-menu-toggle[data-open="true"] span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+        .poco-menu-toggle[data-open="true"] span:nth-child(2) { opacity: 0; }
+        .poco-menu-toggle[data-open="true"] span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+        .poco-mobile-menu {
+          position: absolute; top: calc(100% + 8px); left: 12px; right: 12px;
+          width: auto; max-width: calc(100vw - 24px); padding: 12px;
+          flex-direction: column; gap: 4px; overflow: hidden;
+          border: 1px solid var(--border-subtle); border-radius: 20px;
+          background: rgba(255,248,243,.98); box-shadow: var(--shadow-lg);
+        }
+        .poco-mobile-menu[data-open="true"] { display: flex; }
+        .poco-mobile-menu a {
+          display: block; padding: 14px 16px; border-radius: 12px;
+          font-family: var(--font-body); font-size: 16px; font-weight: 600;
+          line-height: 1.25; color: var(--poco-ink); text-decoration: none;
+        }
+        .poco-mobile-menu a:focus-visible, .poco-menu-toggle:focus-visible {
+          outline: 3px solid var(--focus-ring); outline-offset: 2px;
+        }
+        .poco-mobile-menu .poco-mobile-contact {
+          margin-top: 4px; color: var(--poco-white); background: var(--poco-violet);
+        }
+      }
+    </style>`;
+    const mobileNavScript = '<script>(' + installMobileNavigation.toString() + ')();</' + 'script>';
+
     const resourceScript = '<script>window.__resources = ' +
       JSON.stringify(resourceMap).split('</' + 'script>').join('<\\/' + 'script>') +
       ';</' + 'script>';
@@ -146,6 +267,20 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (headOpen) {
       const i = headOpen.index + headOpen[0].length;
       template = template.slice(0, i) + resourceScript + template.slice(i);
+    }
+
+    // Put responsive overrides last in <head> so they win over the bundled
+    // mobile rules without needing brittle selectors.
+    const headClose = template.match(/<\/head\s*>/i);
+    if (headClose) {
+      const i = headClose.index;
+      template = template.slice(0, i) + mobileNavStyles + template.slice(i);
+    }
+
+    const bodyClose = template.match(/<\/body\s*>/i);
+    if (bodyClose) {
+      const i = bodyClose.index;
+      template = template.slice(0, i) + mobileNavScript + template.slice(i);
     }
 
     // Parse the template and swap the root element. Scripts inserted via
